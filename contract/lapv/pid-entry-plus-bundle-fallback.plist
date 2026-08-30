@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<array>
+	<dict>
+		<key>bundle-id</key>
+		<string>com.apple.Music</string>
+		<key>gain</key>
+		<real>0.25</real>
+		<key>pid</key>
+		<integer>1234</integer>
+	</dict>
+	<dict>
+		<key>bundle-id</key>
+		<string>com.apple.Music</string>
+		<key>gain</key>
+		<real>0.75</real>
+	</dict>
+</array>
+</plist>
