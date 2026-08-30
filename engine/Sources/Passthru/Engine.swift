@@ -49,6 +49,12 @@ final class Engine: ObservableObject {
 
     private let controls = OSAllocatedUnfairLock<Controls>(initialState: Controls())
 
+    // MARK: Diagnostics toggles
+
+    // Off by default: the per-second [io] line is diagnostic, not part of
+    // normal operation. The latency instrument opts in via --io-telemetry.
+    static let ioTelemetryEnabled = CommandLine.arguments.contains("--io-telemetry")
+
     // MARK: IO plumbing
 
     private var aggregateID: AudioObjectID = 0
@@ -638,20 +644,23 @@ final class Engine: ObservableObject {
         // The single IOProc on the aggregate is the only thing left to
         // observe. The capture/render split is gone, the ring is gone, the
         // governor is gone - if the IOProc is firing, audio is flowing
-        // bit-transparently. One [io] line per second.
-        let io = ioCounter.drain()
-        if io.cycleCount > 0 {
-            let peak: Float = peakAmplitude.withLock { amp in
-                let v = amp.peak
-                amp.peak = 0
-                return v
+        // bit-transparently. Opt-in via --io-telemetry; the per-second
+        // line is diagnostic and would otherwise spam stdout.
+        if Self.ioTelemetryEnabled {
+            let io = ioCounter.drain()
+            if io.cycleCount > 0 {
+                let peak: Float = peakAmplitude.withLock { amp in
+                    let v = amp.peak
+                    amp.peak = 0
+                    return v
+                }
+                Log.shared.line(String(
+                    format: "[io] cycles=%d frames_min/avg/max=%d/%.0f/%d samples_min/avg/max=%d/%.0f/%d span=%.1f ms peak=%.4f",
+                    io.cycleCount,
+                    io.framesMin, io.framesAvg, io.framesMax,
+                    io.samplesMin, io.samplesAvg, io.samplesMax,
+                    io.timeSpanMs, peak))
             }
-            Log.shared.line(String(
-                format: "[io] cycles=%d frames_min/avg/max=%d/%.0f/%d samples_min/avg/max=%d/%.0f/%d span=%.1f ms peak=%.4f",
-                io.cycleCount,
-                io.framesMin, io.framesAvg, io.framesMax,
-                io.samplesMin, io.samplesAvg, io.samplesMax,
-                io.timeSpanMs, peak))
         }
 
         // Drop stats are no longer possible (the aggregate is a same-cycle
@@ -727,7 +736,8 @@ final class Engine: ObservableObject {
     }
 
     // MARK: Telemetry tick (independent of the menu's view task so the [io]
-    // line emits even when the user hasn't opened the menu)
+    // line emits even when the user hasn't opened the menu - but only when
+    // --io-telemetry is passed; default is silent)
 
     private var tickSource: DispatchSourceTimer?
 
