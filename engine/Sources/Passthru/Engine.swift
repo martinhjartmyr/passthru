@@ -644,8 +644,8 @@ final class Engine: ObservableObject {
         // The single IOProc on the aggregate is the only thing left to
         // observe. The capture/render split is gone, the ring is gone, the
         // governor is gone - if the IOProc is firing, audio is flowing
-        // bit-transparently. Opt-in via --io-telemetry; the per-second
-        // line is diagnostic and would otherwise spam stdout.
+        // bit-transparently. The per-second [io] line is gated by
+        // ioTelemetryEnabled; default is silent.
         if Self.ioTelemetryEnabled {
             let io = ioCounter.drain()
             if io.cycleCount > 0 {
@@ -736,8 +736,7 @@ final class Engine: ObservableObject {
     }
 
     // MARK: Telemetry tick (independent of the menu's view task so the [io]
-    // line emits even when the user hasn't opened the menu - but only when
-    // --io-telemetry is passed; default is silent)
+    // line emits even when the user hasn't opened the menu)
 
     private var tickSource: DispatchSourceTimer?
 

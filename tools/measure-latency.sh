@@ -44,11 +44,6 @@ WAV="$(mktemp /tmp/passthru-latency-XXXXXX.wav)"
 # leaves the binary orphaned, so clean up both by name on exit.
 trap 'rm -f "$WAV"; if [ "${STARTED_ENGINE:-0}" = "1" ]; then pkill -f "swift run Passthru" 2>/dev/null || true; pkill -x Passthru 2>/dev/null || true; fi' EXIT
 STARTED_ENGINE=0
-ENGINE_PID=""
-
-# MARK: Make sure an engine is running with --io-telemetry. The script
-# owns the engine it starts and tears it down; if one was already running
-# (without the flag) we fail rather than silently using stale telemetry.
 
 # MARK: Controlled source: 440 Hz stereo 16-bit 44.1k WAV via python3.
 
@@ -95,8 +90,11 @@ fi
 
 # MARK: Routed run against the virtual device.
 
+# Make sure an engine is running with --io-telemetry. The script owns the
+# engine it starts and tears it down; if one was already running (without
+# the flag) we fail rather than silently using stale telemetry.
 if pgrep -f "Passthru --io-telemetry" >/dev/null 2>&1; then
-    ENGINE_PID=$(pgrep -f "Passthru --io-telemetry" | head -1)
+    :
 elif pgrep -f "swift run Passthru" >/dev/null 2>&1; then
     echo "FAIL: an engine is running but without --io-telemetry; kill it and rerun (this script will start one for you)" >&2
     exit 2
@@ -107,19 +105,20 @@ else
     echo "starting engine with --io-telemetry (script owns it for this run)"
     ENGINE_SESSION_LINE=$(wc -l < "$LOG" 2>/dev/null || echo 0)
     (cd "$(cd "$(dirname "$0")/.." && pwd)/engine" && swift run Passthru --io-telemetry --route-through-passthru >/dev/null 2>&1) &
-    ENGINE_PID=$!
     STARTED_ENGINE=1
     # Wait for the engine to write its first session marker, so we know
     # the new instance is the one that owns the log tail we'll grep.
+    session_ready=1
     for _ in $(seq 1 30); do
         CURRENT=$(wc -l < "$LOG" 2>/dev/null || echo 0)
         if [ "$CURRENT" -gt "$ENGINE_SESSION_LINE" ] && \
            tail -n +"$((ENGINE_SESSION_LINE + 1))" "$LOG" 2>/dev/null | grep -q "passthru session start"; then
+            session_ready=0
             break
         fi
         sleep 1
     done
-    if ! tail -n +"$((ENGINE_SESSION_LINE + 1))" "$LOG" 2>/dev/null | grep -q "passthru session start"; then
+    if [ "$session_ready" -ne 0 ]; then
         echo "FAIL: engine did not come up within 30s; check $LOG" >&2
         exit 2
     fi
