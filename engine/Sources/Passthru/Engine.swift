@@ -98,19 +98,19 @@ final class Engine: ObservableObject {
         }
         virtualDevice = dev
 
-        let out = CA.defaultOutputDevice()
+        let out = GainChannel.CA.defaultOutputDevice()
         guard out != 0 else {
             publishError("No default output device found.")
             return false
         }
         outputDevice = out
-        originalOutputUID = CA.deviceUID(out)
+        originalOutputUID = GainChannel.CA.deviceUID(out)
 
-        Log.shared.line("devices: virtual='\(CA.deviceName(dev))' (#\(dev)) real='\(CA.deviceName(out))' (#\(out))")
-        Log.shared.line("rates (pre-aggregate): virtual=\(CA.nominalRate(dev)) Hz, real=\(CA.nominalRate(out)) Hz")
+        Log.shared.line("devices: virtual='\(GainChannel.CA.deviceName(dev))' (#\(dev)) real='\(GainChannel.CA.deviceName(out))' (#\(out))")
+        Log.shared.line("rates (pre-aggregate): virtual=\(GainChannel.CA.nominalRate(dev)) Hz, real=\(GainChannel.CA.nominalRate(out)) Hz")
 
-        Log.shared.line("formats: virtual-in=\(CA.formatLine(dev, scope: CA.inputScope)), real-out=\(CA.formatLine(out, scope: CA.outputScope))")
-        Log.shared.line("io quanta: virtual=\(CA.bufferFrameSize(dev)) frames, real=\(CA.bufferFrameSize(out)) frames")
+        Log.shared.line("formats: virtual-in=\(GainChannel.CA.formatLine(dev, scope: CA.inputScope)), real-out=\(GainChannel.CA.formatLine(out, scope: CA.outputScope))")
+        Log.shared.line("io quanta: virtual=\(GainChannel.CA.bufferFrameSize(dev)) frames, real=\(GainChannel.CA.bufferFrameSize(out)) frames")
 
         guard configureAggregate() else { return false }
 
@@ -148,10 +148,10 @@ final class Engine: ObservableObject {
         removeListeners()
         perAppMixer?.stop()
 
-        if routedToVirtual, let uid = originalOutputUID, let original = CA.device(matchingUID: uid) {
+        if routedToVirtual, let uid = originalOutputUID, let original = GainChannel.CA.device(matchingUID: uid) {
             routingChangeIsOurs = true
-            CA.setDefaultOutput(original)
-            Log.shared.line("restored default output to '\(CA.deviceName(original))'")
+            GainChannel.CA.setDefaultOutput(original)
+            Log.shared.line("restored default output to '\(GainChannel.CA.deviceName(original))'")
         }
         DispatchQueue.main.async { self.routedToVirtual = false }
     }
@@ -175,8 +175,8 @@ final class Engine: ObservableObject {
     // determines the rate; the virtual member is forced to match. Returns
     // false if Core Audio refuses aggregation.
     private func configureAggregate() -> Bool {
-        guard let virtualUID = CA.deviceUID(virtualDevice),
-              let physicalUID = CA.deviceUID(outputDevice) else {
+        guard let virtualUID = GainChannel.CA.deviceUID(virtualDevice),
+              let physicalUID = GainChannel.CA.deviceUID(outputDevice) else {
             publishError("Cannot read device UIDs for the aggregate")
             return false
         }
@@ -196,13 +196,13 @@ final class Engine: ObservableObject {
         var newID = AudioDeviceID(0)
         let status = AudioHardwareCreateAggregateDevice(description as CFDictionary, &newID)
         guard status == noErr, newID != 0 else {
-            publishError("Cannot create aggregate (master='\(CA.deviceName(outputDevice))', member='\(CA.deviceName(virtualDevice))'): \(status)")
+            publishError("Cannot create aggregate (master='\(GainChannel.CA.deviceName(outputDevice))', member='\(GainChannel.CA.deviceName(virtualDevice))'): \(status)")
             Log.shared.line("aggregate: AudioHardwareCreateAggregateDevice \(status); aggregate path not available on this host")
             return false
         }
         aggregateID = newID
-        let aggRate = CA.nominalRate(newID)
-        Log.shared.line("aggregate: master='\(CA.deviceName(outputDevice))' member='\(CA.deviceName(virtualDevice))' quantum=\(CA.bufferFrameSize(newID)) frames rate=\(aggRate) Hz")
+        let aggRate = GainChannel.CA.nominalRate(newID)
+        Log.shared.line("aggregate: master='\(GainChannel.CA.deviceName(outputDevice))' member='\(GainChannel.CA.deviceName(virtualDevice))' quantum=\(GainChannel.CA.bufferFrameSize(newID)) frames rate=\(aggRate) Hz")
         return true
     }
 
@@ -211,9 +211,9 @@ final class Engine: ObservableObject {
 
     private func logVirtualControls() {
         for scope in [CA.inputScope, CA.outputScope] {
-            let vol = CA.volumeScalar(virtualDevice, scope: scope).map { "\($0)" } ?? "?"
-            let db = CA.volumeDecibels(virtualDevice, scope: scope).map { "\($0)" } ?? "?"
-            let mute = CA.isMuted(virtualDevice, scope: scope).map { "\($0)" } ?? "?"
+            let vol = GainChannel.CA.volumeScalar(virtualDevice, scope: scope).map { "\($0)" } ?? "?"
+            let db = GainChannel.CA.volumeDecibels(virtualDevice, scope: scope).map { "\($0)" } ?? "?"
+            let mute = GainChannel.CA.isMuted(virtualDevice, scope: scope).map { "\($0)" } ?? "?"
             Log.shared.line("observed Passthru \(scopeName(scope)): scalar \(vol), dB \(db), muted \(mute) (not modified)")
         }
     }
@@ -281,16 +281,16 @@ final class Engine: ObservableObject {
     /// External writes land here: log the observation and let it stand.
     /// Scalar AND dB are logged so near-unity step sizes can be inspected.
     private func virtualControlObserved() {
-        guard let vol = CA.volumeScalar(virtualDevice, scope: CA.outputScope),
-              let mute = CA.isMuted(virtualDevice, scope: CA.outputScope) else { return }
-        let db = CA.volumeDecibels(virtualDevice, scope: CA.outputScope).map { "\($0)" } ?? "?"
+        guard let vol = GainChannel.CA.volumeScalar(virtualDevice, scope: CA.outputScope),
+              let mute = GainChannel.CA.isMuted(virtualDevice, scope: CA.outputScope) else { return }
+        let db = GainChannel.CA.volumeDecibels(virtualDevice, scope: CA.outputScope).map { "\($0)" } ?? "?"
 
         Log.shared.line("OBSERVED external Passthru change: scalar=\(vol) dB=\(db) muted=\(mute) - native system volume moved; letting it stand")
     }
 
     private func defaultOutputChanged() {
-        let id = CA.defaultOutputDevice()
-        let name = id != 0 ? CA.deviceName(id) : "?"
+        let id = GainChannel.CA.defaultOutputDevice()
+        let name = id != 0 ? GainChannel.CA.deviceName(id) : "?"
         if routingChangeIsOurs {
             routingChangeIsOurs = false
             Log.shared.line("default output -> '\(name)' (our routing toggle)")
@@ -303,7 +303,7 @@ final class Engine: ObservableObject {
 
     /// Real output devices on the system, excluding our own virtual device.
     private var realOutputIDs: [AudioObjectID] {
-        CA.outputDevices().filter { $0 != 0 && $0 != virtualDevice }
+        GainChannel.CA.outputDevices().filter { $0 != 0 && $0 != virtualDevice }
     }
 
     private func deviceListChanged() {
@@ -328,14 +328,14 @@ final class Engine: ObservableObject {
     private func actOnRoutingDecision(diff: DeviceListDiff, source: String) {
         let uidByID: [UInt32: String] = Dictionary(
             uniqueKeysWithValues: realOutputIDs.compactMap { id in
-                CA.deviceUID(id).map { (UInt32(id), $0) }
+                GainChannel.CA.deviceUID(id).map { (UInt32(id), $0) }
             })
         let inputs = RoutingInputs(
             diff: diff,
             uidByID: uidByID,
             currentSinkID: outputDevice == 0 ? nil : UInt32(outputDevice),
-            currentSinkName: outputDevice == 0 ? nil : CA.deviceName(outputDevice),
-            currentSinkUID: outputDevice == 0 ? nil : CA.deviceUID(outputDevice),
+            currentSinkName: outputDevice == 0 ? nil : GainChannel.CA.deviceName(outputDevice),
+            currentSinkUID: outputDevice == 0 ? nil : GainChannel.CA.deviceUID(outputDevice),
             rememberedUID: persistedLastOutput.uid,
             isRouted: routedToVirtual)
         let decision = RoutingDecider.decide(inputs)
@@ -348,9 +348,9 @@ final class Engine: ObservableObject {
         let (uid, name): (String, String)
         switch decision {
         case .switchTo(let u), .fallbackTo(let u):
-            let id = CA.device(matchingUID: u)
+            let id = GainChannel.CA.device(matchingUID: u)
             uid = u
-            name = id.map { CA.deviceName($0) } ?? u
+            name = id.map { GainChannel.CA.deviceName($0) } ?? u
         case .stopAndError(let n):
             uid = n
             name = n
@@ -374,22 +374,22 @@ final class Engine: ObservableObject {
         case .noop:
             return
         case .switchTo(let uid):
-            guard let id = CA.device(matchingUID: uid) else {
+            guard let id = GainChannel.CA.device(matchingUID: uid) else {
                 Log.shared.line("auto-switch (\(source)): '\(uid)' not present; skipping")
                 return
             }
-            Log.shared.line("auto-switch (\(source)): moving sink to '\(CA.deviceName(id))'")
+            Log.shared.line("auto-switch (\(source)): moving sink to '\(GainChannel.CA.deviceName(id))'")
             selectOutput(id)
         case .fallbackTo(let uid):
-            guard let id = CA.device(matchingUID: uid) else {
-                let name = outputDevice == 0 ? "previous output" : CA.deviceName(outputDevice)
+            guard let id = GainChannel.CA.device(matchingUID: uid) else {
+                let name = outputDevice == 0 ? "previous output" : GainChannel.CA.deviceName(outputDevice)
                 Log.shared.line("auto-fallback (\(source)): '\(uid)' not present; stopping")
                 stopIO()
                 publishError("Output '\(name)' disconnected. Pick a new one.")
                 return
             }
-            let oldName = outputDevice == 0 ? "?" : CA.deviceName(outputDevice)
-            Log.shared.line("auto-fallback (\(source)): '\(oldName)' gone; falling back to '\(CA.deviceName(id))'")
+            let oldName = outputDevice == 0 ? "?" : GainChannel.CA.deviceName(outputDevice)
+            Log.shared.line("auto-fallback (\(source)): '\(oldName)' gone; falling back to '\(GainChannel.CA.deviceName(id))'")
             selectOutput(id)
         case .stopAndError(let name):
             Log.shared.line("auto-stop (\(source)): sink '\(name)' gone; no remembered fallback")
@@ -473,9 +473,9 @@ final class Engine: ObservableObject {
         let inRaw = UnsafeRawPointer(inputData)
         let outRaw = UnsafeRawPointer(outputData)
         let inBuffers = Array(UnsafeBufferPointer(
-            start: CA.bufferArray(inRaw), count: CA.bufferCount(inRaw)))
+            start: GainChannel.CA.bufferArray(inRaw), count: GainChannel.CA.bufferCount(inRaw)))
         let outBuffers = Array(UnsafeBufferPointer(
-            start: CA.bufferArray(outRaw), count: CA.bufferCount(outRaw)))
+            start: GainChannel.CA.bufferArray(outRaw), count: GainChannel.CA.bufferCount(outRaw)))
         guard let src = inBuffers.first?.mData?.assumingMemoryBound(to: Float.self),
               let dst = outBuffers.first?.mData?.assumingMemoryBound(to: Float.self) else { return }
 
@@ -557,7 +557,7 @@ final class Engine: ObservableObject {
 
         if on {
             routingChangeIsOurs = true
-            let status = CA.setDefaultOutput(virtualDevice)
+            let status = GainChannel.CA.setDefaultOutput(virtualDevice)
             if status == noErr {
                 routedToVirtual = true
                 Log.shared.line("routing: system audio now flows through Passthru")
@@ -565,11 +565,11 @@ final class Engine: ObservableObject {
                 routingChangeIsOurs = false
                 Log.shared.line("routing FAILED (\(status)); default output untouched")
             }
-        } else if let uid = originalOutputUID, let original = CA.device(matchingUID: uid) {
+        } else if let uid = originalOutputUID, let original = GainChannel.CA.device(matchingUID: uid) {
             routingChangeIsOurs = true
-            CA.setDefaultOutput(original)
+            GainChannel.CA.setDefaultOutput(original)
             routedToVirtual = false
-            Log.shared.line("routing: restored '\(CA.deviceName(original))'")
+            Log.shared.line("routing: restored '\(GainChannel.CA.deviceName(original))'")
         } else {
             Log.shared.line("routing off skipped: original output no longer present")
         }
@@ -579,7 +579,7 @@ final class Engine: ObservableObject {
     // MARK: Output destination picker
 
     func refreshOutputs() {
-        var ids = CA.outputDevices()
+        var ids = GainChannel.CA.outputDevices()
             .filter { $0 != 0 && $0 != virtualDevice }
         // The Picker binds to selectedOutputID. If the current sink is no
         // longer in Core Audio's enumeration (e.g., a device the user
@@ -591,7 +591,7 @@ final class Engine: ObservableObject {
             ids.append(outputDevice)
         }
         availableOutputs = ids
-            .map { OutputOption(id: $0, name: CA.deviceName($0)) }
+            .map { OutputOption(id: $0, name: GainChannel.CA.deviceName($0)) }
             .sorted { $0.name < $1.name }
     }
 
@@ -609,16 +609,16 @@ final class Engine: ObservableObject {
         }
         guard id != outputDevice else { return }
 
-        let oldName = CA.deviceName(outputDevice)
+        let oldName = GainChannel.CA.deviceName(outputDevice)
 
         if rebuildAggregate(on: id) {
             selectedOutputID = id
-            if let uid = CA.deviceUID(id) {
+            if let uid = GainChannel.CA.deviceUID(id) {
                 persistedLastOutput.uid = uid
             }
-            Log.shared.line("output switched '\(oldName)' -> '\(CA.deviceName(id))' @\(Int(CA.nominalRate(id))) Hz")
+            Log.shared.line("output switched '\(oldName)' -> '\(GainChannel.CA.deviceName(id))' @\(Int(GainChannel.CA.nominalRate(id))) Hz")
         } else {
-            Log.shared.line("switch to '\(CA.deviceName(id))' failed; reverting to '\(oldName)'")
+            Log.shared.line("switch to '\(GainChannel.CA.deviceName(id))' failed; reverting to '\(oldName)'")
             if rebuildAggregate(on: outputDevice) {
                 Log.shared.line("reverted to '\(oldName)'")
                 // selectedOutputID was never changed in the success path;
@@ -688,9 +688,9 @@ final class Engine: ObservableObject {
 
     private func refreshStatusLine() {
         formatSummary = outputDevice != 0
-            ? CA.shortFormatLine(virtualDevice, scope: CA.inputScope)
+            ? GainChannel.CA.shortFormatLine(virtualDevice, scope: CA.inputScope)
             : ""
-        outputName = outputDevice != 0 ? CA.deviceName(outputDevice) : ""
+        outputName = outputDevice != 0 ? GainChannel.CA.deviceName(outputDevice) : ""
     }
 
     private func currentMode() -> Mode {

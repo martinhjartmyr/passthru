@@ -24,70 +24,6 @@ import Foundation
 import CoreAudio
 import GainChannel
 
-// Local AudioBufferList access (the app's CA enum is not linkable here).
-enum SpikeCA {
-    static let globalScope = kAudioObjectPropertyScopeGlobal
-    static let outputScope = kAudioObjectPropertyScopeOutput
-
-    static func address(_ selector: AudioObjectPropertySelector) -> AudioObjectPropertyAddress {
-        AudioObjectPropertyAddress(
-            mSelector: selector, mScope: globalScope,
-            mElement: kAudioObjectPropertyElementMain)
-    }
-
-    static func outputDevices() -> [AudioObjectID] {
-        var addr = address(kAudioHardwarePropertyDevices)
-        var size: UInt32 = 0
-        let sys = AudioObjectID(kAudioObjectSystemObject)
-        guard AudioObjectGetPropertyDataSize(sys, &addr, 0, nil, &size) == noErr else { return [] }
-        var ids = [AudioDeviceID](repeating: 0, count: Int(size) / MemoryLayout<AudioDeviceID>.size)
-        guard AudioObjectGetPropertyData(sys, &addr, 0, nil, &size, &ids) == noErr else { return [] }
-        return ids.filter { id in
-            var sAddr = address(kAudioDevicePropertyStreams)
-            sAddr.mScope = outputScope
-            var sz: UInt32 = 0
-            return AudioObjectGetPropertyDataSize(id, &sAddr, 0, nil, &sz) == noErr && sz > 0
-        }
-    }
-
-    static func deviceName(_ id: AudioObjectID) -> String {
-        var addr = address(kAudioObjectPropertyName)
-        var name: CFString? = nil
-        var size = UInt32(MemoryLayout<CFString>.size)
-        guard AudioObjectGetPropertyData(id, &addr, 0, nil, &size, &name) == noErr,
-              let cfName = name else { return "?" }
-        return cfName as String
-    }
-
-    static func deviceUID(_ id: AudioObjectID) -> String? {
-        var addr = address(kAudioDevicePropertyDeviceUID)
-        var uid: CFString? = nil
-        var size = UInt32(MemoryLayout<CFString>.size)
-        guard AudioObjectGetPropertyData(id, &addr, 0, nil, &size, &uid) == noErr else { return nil }
-        return uid as String?
-    }
-
-    static func defaultOutputDevice() -> AudioObjectID {
-        var addr = address(kAudioHardwarePropertyDefaultOutputDevice)
-        var id = AudioDeviceID(0)
-        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
-        let sys = AudioObjectID(kAudioObjectSystemObject)
-        guard AudioObjectGetPropertyData(sys, &addr, 0, nil, &size, &id) == noErr else { return 0 }
-        return id
-    }
-
-    // MARK: AudioBufferList access
-
-    static func bufferCount(_ list: UnsafeRawPointer) -> Int {
-        Int(list.load(fromByteOffset: 0, as: UInt32.self))
-    }
-
-    static func bufferArray(_ list: UnsafeRawPointer) -> UnsafePointer<AudioBuffer> {
-        let offset = MemoryLayout<AudioBufferList>.size - MemoryLayout<AudioBuffer>.size
-        return UnsafeRawPointer(list).advanced(by: offset).assumingMemoryBound(to: AudioBuffer.self)
-    }
-}
-
 final class SpikeState {
     let queue = DispatchQueue(label: "aggregatespike.samples")
     var deltas: [Double] = []
@@ -113,9 +49,9 @@ let ioProc: AudioDeviceIOProc = { _, _, inputData, inTime, outputData, outTime, 
     let inRaw = UnsafeRawPointer(inputData)
     let outRaw = UnsafeRawPointer(outputData)
     let inBuffers = Array(UnsafeBufferPointer(
-        start: SpikeCA.bufferArray(inRaw), count: SpikeCA.bufferCount(inRaw)))
+        start: GainChannel.CA.bufferArray(inRaw), count: GainChannel.CA.bufferCount(inRaw)))
     let outBuffers = Array(UnsafeBufferPointer(
-        start: SpikeCA.bufferArray(outRaw), count: SpikeCA.bufferCount(outRaw)))
+        start: GainChannel.CA.bufferArray(outRaw), count: GainChannel.CA.bufferCount(outRaw)))
 
     func frames(_ buffer: AudioBuffer) -> Int {
         Int(buffer.mDataByteSize) / MemoryLayout<Float>.size /
@@ -170,22 +106,22 @@ guard let virtual = GainChannel.findVirtualDevice(), virtual != 0 else {
     exit(exitCode("SETUP-FAILED"))
 }
 
-let candidates = SpikeCA.outputDevices().filter { $0 != virtual }
+let candidates = GainChannel.CA.outputDevices().filter { $0 != virtual }
 let physical = deviceSubstring.flatMap { substring in
-        candidates.first { SpikeCA.deviceName($0).localizedCaseInsensitiveContains(substring) }
-    } ?? (SpikeCA.defaultOutputDevice() != virtual
-        ? SpikeCA.defaultOutputDevice() : candidates.first)
+        candidates.first { GainChannel.CA.deviceName($0).localizedCaseInsensitiveContains(substring) }
+    } ?? (GainChannel.CA.defaultOutputDevice() != virtual
+        ? GainChannel.CA.defaultOutputDevice() : candidates.first)
 
 guard let dac = physical, dac != 0 else {
     print("SPIKE RESULT: SETUP-FAILED - no physical output device found")
     exit(exitCode("SETUP-FAILED"))
 }
-guard let dacUID = SpikeCA.deviceUID(dac), let virtualUID = SpikeCA.deviceUID(virtual) else {
+guard let dacUID = GainChannel.CA.deviceUID(dac), let virtualUID = GainChannel.CA.deviceUID(virtual) else {
     print("SPIKE RESULT: SETUP-FAILED - cannot read device UIDs")
     exit(exitCode("SETUP-FAILED"))
 }
 
-print("spike: master-clock='\(SpikeCA.deviceName(dac))' (#\(dac)) member='\(SpikeCA.deviceName(virtual))' (#\(virtual))")
+print("spike: master-clock='\(GainChannel.CA.deviceName(dac))' (#\(dac)) member='\(GainChannel.CA.deviceName(virtual))' (#\(virtual))")
 print("spike: soak \(Int(seconds))s")
 
 // MARK: Aggregate creation
@@ -209,7 +145,7 @@ guard createStatus == noErr, aggregateID != 0 else {
     print("(finding: libASPL device refused aggregation - governor fallback stands)")
     exit(exitCode("SETUP-FAILED"))
 }
-print("spike: aggregate #\(aggregateID) created, master clock = '\(SpikeCA.deviceName(dac))'")
+print("spike: aggregate #\(aggregateID) created, master clock = '\(GainChannel.CA.deviceName(dac))'")
 
 defer {
     AudioHardwareDestroyAggregateDevice(aggregateID)

@@ -27,88 +27,6 @@ import CoreAudio
 import GainChannel
 import LatencyCore
 
-enum EngCA {
-    static let globalScope = kAudioObjectPropertyScopeGlobal
-    static let outputScope = kAudioObjectPropertyScopeOutput
-    static let inputScope = kAudioObjectPropertyScopeInput
-
-    static func address(_ selector: AudioObjectPropertySelector,
-                        scope: AudioObjectPropertyScope = globalScope) -> AudioObjectPropertyAddress {
-        AudioObjectPropertyAddress(
-            mSelector: selector, mScope: scope,
-            mElement: kAudioObjectPropertyElementMain)
-    }
-
-    static func outputDevices() -> [AudioObjectID] {
-        var addr = address(kAudioHardwarePropertyDevices)
-        var size: UInt32 = 0
-        let sys = AudioObjectID(kAudioObjectSystemObject)
-        guard AudioObjectGetPropertyDataSize(sys, &addr, 0, nil, &size) == noErr else { return [] }
-        var ids = [AudioDeviceID](repeating: 0, count: Int(size) / MemoryLayout<AudioDeviceID>.size)
-        guard AudioObjectGetPropertyData(sys, &addr, 0, nil, &size, &ids) == noErr else { return [] }
-        return ids.filter { id in
-            var sAddr = address(kAudioDevicePropertyStreams, scope: outputScope)
-            var sz: UInt32 = 0
-            return AudioObjectGetPropertyDataSize(id, &sAddr, 0, nil, &sz) == noErr && sz > 0
-        }
-    }
-
-    static func deviceName(_ id: AudioObjectID) -> String {
-        var addr = address(kAudioObjectPropertyName)
-        var name: CFString? = nil
-        var size = UInt32(MemoryLayout<CFString>.size)
-        guard AudioObjectGetPropertyData(id, &addr, 0, nil, &size, &name) == noErr,
-              let cfName = name else { return "?" }
-        return cfName as String
-    }
-
-    static func deviceUID(_ id: AudioObjectID) -> String? {
-        var addr = address(kAudioDevicePropertyDeviceUID)
-        var uid: CFString? = nil
-        var size = UInt32(MemoryLayout<CFString>.size)
-        guard AudioObjectGetPropertyData(id, &addr, 0, nil, &size, &uid) == noErr else { return nil }
-        return uid as String?
-    }
-
-    static func bufferFrameSize(_ id: AudioObjectID) -> UInt32 {
-        var addr = address(kAudioDevicePropertyBufferFrameSize)
-        var size: UInt32 = UInt32(MemoryLayout<UInt32>.size)
-        var frames: UInt32 = 0
-        guard AudioObjectGetPropertyData(id, &addr, 0, nil, &size, &frames) == noErr else { return 512 }
-        return frames
-    }
-
-    static func nominalRate(_ id: AudioObjectID) -> Double {
-        var addr = address(kAudioDevicePropertyNominalSampleRate)
-        var size = UInt32(MemoryLayout<Float64>.size)
-        var rate: Float64 = 0
-        guard AudioObjectGetPropertyData(id, &addr, 0, nil, &size, &rate) == noErr else { return 44100.0 }
-        return rate
-    }
-
-    static func defaultOutputDevice() -> AudioObjectID {
-        var addr = address(kAudioHardwarePropertyDefaultOutputDevice)
-        var id = AudioDeviceID(0)
-        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
-        let sys = AudioObjectID(kAudioObjectSystemObject)
-        guard AudioObjectGetPropertyData(sys, &addr, 0, nil, &size, &id) == noErr else { return 0 }
-        return id
-    }
-
-    static func bufferCount(_ list: UnsafeRawPointer) -> Int {
-        Int(list.load(fromByteOffset: 0, as: UInt32.self))
-    }
-
-    static func bufferArray(_ list: UnsafeRawPointer) -> UnsafePointer<AudioBuffer> {
-        let offset = MemoryLayout<AudioBufferList>.size - MemoryLayout<AudioBuffer>.size
-        return UnsafeRawPointer(list).advanced(by: offset).assumingMemoryBound(to: AudioBuffer.self)
-    }
-
-    static func channelCount(buffer: AudioBuffer) -> Int {
-        max(Int(buffer.mNumberChannels), 1)
-    }
-}
-
 final class EngineState {
     let queue = DispatchQueue(label: "engineonaggregate.state")
     var cycleCount = 0
@@ -133,12 +51,12 @@ let ioProc: AudioDeviceIOProc = { _, _, inputData, inTime, outputData, outTime, 
     let inRaw = UnsafeRawPointer(inputData)
     let outRaw = UnsafeRawPointer(outputData)
     let inBuffers = Array(UnsafeBufferPointer(
-        start: EngCA.bufferArray(inRaw), count: EngCA.bufferCount(inRaw)))
+        start: GainChannel.CA.bufferArray(inRaw), count: GainChannel.CA.bufferCount(inRaw)))
     let outBuffers = Array(UnsafeBufferPointer(
-        start: EngCA.bufferArray(outRaw), count: EngCA.bufferCount(outRaw)))
+        start: GainChannel.CA.bufferArray(outRaw), count: GainChannel.CA.bufferCount(outRaw)))
 
     func frames(_ buffer: AudioBuffer) -> Int {
-        Int(buffer.mDataByteSize) / MemoryLayout<Float>.size / EngCA.channelCount(buffer: buffer)
+        Int(buffer.mDataByteSize) / MemoryLayout<Float>.size / GainChannel.CA.channelCount(buffer: buffer)
     }
     let inFrames = inBuffers.map(frames).first ?? 0
     let outFrames = outBuffers.map(frames).first ?? 0
@@ -146,8 +64,8 @@ let ioProc: AudioDeviceIOProc = { _, _, inputData, inTime, outputData, outTime, 
     if let src = inBuffers.first?.mData?.assumingMemoryBound(to: Float.self),
        let dst = outBuffers.first?.mData?.assumingMemoryBound(to: Float.self),
        inFrames > 0, outFrames > 0 {
-        let inChannels = EngCA.channelCount(buffer: inBuffers[0])
-        let outChannels = EngCA.channelCount(buffer: outBuffers[0])
+let inChannels = GainChannel.CA.channelCount(buffer: inBuffers[0])
+                let outChannels = GainChannel.CA.channelCount(buffer: outBuffers[0])
         let wantCount = outFrames * outChannels
         let takeFrames = min(inFrames, outFrames)
         let takeCount = takeFrames * inChannels
@@ -166,8 +84,8 @@ let ioProc: AudioDeviceIOProc = { _, _, inputData, inTime, outputData, outTime, 
         s.lastSampleTime = st
         if !s.loggedFirstCycle {
             s.loggedFirstCycle = true
-            let inCh = inBuffers.first.map { EngCA.channelCount(buffer: $0) } ?? 0
-            let outCh = outBuffers.first.map { EngCA.channelCount(buffer: $0) } ?? 0
+            let inCh = inBuffers.first.map { GainChannel.CA.channelCount(buffer: $0) } ?? 0
+            let outCh = outBuffers.first.map { GainChannel.CA.channelCount(buffer: $0) } ?? 0
             print("engine-on-aggregate: first cycle in=\(inFrames) frames @\(inCh)ch out=\(outFrames) frames @\(outCh)ch")
         }
     }
@@ -196,29 +114,29 @@ guard let virtual = GainChannel.findVirtualDevice(), virtual != 0 else {
     exit(2)
 }
 
-let candidates = EngCA.outputDevices().filter { $0 != virtual }
+let candidates = GainChannel.CA.outputDevices().filter { $0 != virtual }
 let physical = deviceSubstring.flatMap { substring in
-        candidates.first { EngCA.deviceName($0).localizedCaseInsensitiveContains(substring) }
-    } ?? (EngCA.defaultOutputDevice() != virtual
-        ? EngCA.defaultOutputDevice() : candidates.first)
+        candidates.first { GainChannel.CA.deviceName($0).localizedCaseInsensitiveContains(substring) }
+    } ?? (GainChannel.CA.defaultOutputDevice() != virtual
+        ? GainChannel.CA.defaultOutputDevice() : candidates.first)
 
 guard let dac = physical, dac != 0 else {
     print("SPIKE RESULT: SETUP-FAILED - no physical output device found")
     exit(2)
 }
-guard let dacUID = EngCA.deviceUID(dac), let virtualUID = EngCA.deviceUID(virtual) else {
+guard let dacUID = GainChannel.CA.deviceUID(dac), let virtualUID = GainChannel.CA.deviceUID(virtual) else {
     print("SPIKE RESULT: SETUP-FAILED - cannot read device UIDs")
     exit(2)
 }
 
-let quantum = EngCA.bufferFrameSize(dac)
-let rate = EngCA.nominalRate(dac)
+let quantum = UInt32(GainChannel.CA.bufferFrameSize(dac))
+let rate = GainChannel.CA.nominalRate(dac)
 let channels = 2
-let target = Int(3 * Int(quantum) * channels / 2)
+let target = 3 * Int(quantum) * channels / 2
 let band = max(Int(quantum) * channels / 8, 1)
 let capacity = 1 << 13
 
-print("engine-on-aggregate: master='\(EngCA.deviceName(dac))' (#\(dac)) member='\(EngCA.deviceName(virtual))' (#\(virtual))")
+print("engine-on-aggregate: master='\(GainChannel.CA.deviceName(dac))' (#\(dac)) member='\(GainChannel.CA.deviceName(virtual))' (#\(virtual))")
 print(String(format: "engine-on-aggregate: rate=%.0f Hz quantum=%u frames channels=%d", rate, quantum, channels))
 print("engine-on-aggregate: ring cap=\(capacity) smp, target=\(target) smp, band=\(band) smp")
 print("engine-on-aggregate: soak \(Int(seconds))s")
