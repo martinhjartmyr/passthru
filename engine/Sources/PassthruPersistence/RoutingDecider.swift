@@ -22,7 +22,7 @@ public struct RoutingInputs: Equatable {
     public let currentSinkID: UInt32?
     public let currentSinkName: String?
     public let currentSinkUID: String?
-    public let rememberedUID: String?
+    public let rememberedChain: [String]
     public let isRouted: Bool
 
     public init(
@@ -31,7 +31,7 @@ public struct RoutingInputs: Equatable {
         currentSinkID: UInt32?,
         currentSinkName: String?,
         currentSinkUID: String?,
-        rememberedUID: String?,
+        rememberedChain: [String],
         isRouted: Bool
     ) {
         self.diff = diff
@@ -39,7 +39,7 @@ public struct RoutingInputs: Equatable {
         self.currentSinkID = currentSinkID
         self.currentSinkName = currentSinkName
         self.currentSinkUID = currentSinkUID
-        self.rememberedUID = rememberedUID
+        self.rememberedChain = rememberedChain
         self.isRouted = isRouted
     }
 }
@@ -48,37 +48,38 @@ public enum RoutingDecider {
     public static func decide(_ inputs: RoutingInputs) -> RoutingDecision {
         let idByUID = Dictionary(uniqueKeysWithValues:
             inputs.uidByID.map { ($1, $0) })
+        let head = inputs.rememberedChain.first
 
         // 1. Disconnect: current sink gone. Check first so a same-tick
         //    add+remove resolves as fallback, not switch.
         if let sinkID = inputs.currentSinkID,
            inputs.diff.removed.contains(sinkID) {
-            // If the device that disappeared IS the remembered one,
+            // If the device that disappeared IS the remembered head,
             // don't fall back to itself; also don't surface an error
             // for a deliberate unplug.
-            if let remembered = inputs.rememberedUID,
+            if let remembered = head,
                remembered == inputs.currentSinkUID {
                 return .noop
             }
-            if let remembered = inputs.rememberedUID,
+            if let remembered = head,
                idByUID[remembered] != nil {
                 return .fallbackTo(uid: remembered)
             }
             return .stopAndError(name: inputs.currentSinkName ?? "previous output")
         }
 
-        // 2. Hot-plug: remembered device just appeared.
-        if let remembered = inputs.rememberedUID,
+        // 2. Hot-plug: remembered head just appeared.
+        if let remembered = head,
            let rememberedID = idByUID[remembered],
            inputs.diff.added.contains(rememberedID),
            rememberedID != inputs.currentSinkID {
             return .switchTo(uid: remembered)
         }
 
-        // 3. Already-present-at-launch: remembered device is here and
+        // 3. Already-present-at-launch: remembered head is here and
         //    not the current sink, AND routing is on.
         if inputs.isRouted,
-           let remembered = inputs.rememberedUID,
+           let remembered = head,
            let rememberedID = idByUID[remembered],
            rememberedID != inputs.currentSinkID {
             return .switchTo(uid: remembered)

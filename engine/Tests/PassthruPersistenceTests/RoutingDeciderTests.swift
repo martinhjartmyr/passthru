@@ -27,13 +27,14 @@ final class RoutingDeciderTests: XCTestCase {
         rememberedUID: String? = nil,
         isRouted: Bool = false
     ) -> RoutingInputs {
-        RoutingInputs(
+        let chain: [String] = rememberedUID.map { [$0] } ?? []
+        return RoutingInputs(
             diff: diff,
             uidByID: uidByID,
             currentSinkID: currentSinkID,
             currentSinkName: currentSinkName,
             currentSinkUID: currentSinkUID,
-            rememberedUID: rememberedUID,
+            rememberedChain: chain,
             isRouted: isRouted)
     }
 
