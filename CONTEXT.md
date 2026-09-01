@@ -30,5 +30,16 @@ Glossary for Passthru. Definitions only - no implementation.
   builds, with the physical DAC as master clock and Passthru as member.
   Capture (Passthru) and render (DAC) share one clock domain on the
   aggregate, so a single IOProc is a same-cycle handoff.
+- **Real output**: A physical audio output device (typically a DAC) that
+  the engine can route to. Distinct from the Passthru virtual device,
+  which is never a valid playback target. The routing layer tracks a
+  small ordered history of real outputs the user or engine has played to.
+  _Avoid_: sink, device, output
+- **Output chain**: The ordered, most-recent-first list of real output
+  UIDs the engine remembers. When the current sink disappears, the
+  routing layer walks the chain and promotes the first entry that is
+  currently online. Capped at five entries. The Passthru UID is never
+  permitted in the chain.
+  _Avoid_: history, fallback list
 - **Bit-transparent pass-through**: Unity gain on every control. The
   pipeline applies no multiply and no resample.
