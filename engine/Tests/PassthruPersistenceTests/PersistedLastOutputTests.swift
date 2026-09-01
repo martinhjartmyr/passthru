@@ -10,13 +10,6 @@ import XCTest
 
 final class PersistedLastOutputTests: XCTestCase {
 
-    private func makeDefaults(name: String) -> UserDefaults {
-        let suite = "test-\(name)-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defaults.removePersistentDomain(forName: suite)
-        return defaults
-    }
-
     func testFreshStoreHasNoUID() {
         let store = PersistedLastOutput(defaults: makeDefaults(name: "fresh"))
         XCTAssertNil(store.uid)
