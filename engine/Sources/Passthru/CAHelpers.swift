@@ -8,16 +8,6 @@ import Foundation
 import CoreAudio
 
 enum CA {
-    static let globalScope = kAudioObjectPropertyScopeGlobal
-    static let inputScope = kAudioObjectPropertyScopeInput
-    static let outputScope = kAudioObjectPropertyScopeOutput
-    static let mainElement = kAudioObjectPropertyElementMain
-
-    static func address(_ selector: AudioObjectPropertySelector,
-                        scope: AudioObjectPropertyScope = kAudioObjectPropertyScopeGlobal) -> AudioObjectPropertyAddress {
-        AudioObjectPropertyAddress(mSelector: selector, mScope: scope, mElement: mainElement)
-    }
-
     // MARK: Listeners (app-only; the probes don't use them)
 
     static func addListener(_ objectID: AudioObjectID,
@@ -25,7 +15,7 @@ enum CA {
                             scope: AudioObjectPropertyScope = kAudioObjectPropertyScopeGlobal,
                             queue: DispatchQueue?,
                             block: @escaping AudioObjectPropertyListenerBlock) -> Bool {
-        var addr = address(selector, scope: scope)
+        var addr = AudioObjectPropertyAddress(mSelector: selector, mScope: scope, mElement: kAudioObjectPropertyElementMain)
         return AudioObjectAddPropertyListenerBlock(objectID, &addr, queue, block) == noErr
     }
 
@@ -33,7 +23,7 @@ enum CA {
                                _ selector: AudioObjectPropertySelector,
                                scope: AudioObjectPropertyScope = kAudioObjectPropertyScopeGlobal,
                                block: @escaping AudioObjectPropertyListenerBlock) {
-        var addr = address(selector, scope: scope)
+        var addr = AudioObjectPropertyAddress(mSelector: selector, mScope: scope, mElement: kAudioObjectPropertyElementMain)
         AudioObjectRemovePropertyListenerBlock(objectID, &addr, nil, block)
     }
 }

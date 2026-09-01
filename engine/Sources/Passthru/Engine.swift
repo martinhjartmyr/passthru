@@ -109,7 +109,7 @@ final class Engine: ObservableObject {
         Log.shared.line("devices: virtual='\(GainChannel.CA.deviceName(dev))' (#\(dev)) real='\(GainChannel.CA.deviceName(out))' (#\(out))")
         Log.shared.line("rates (pre-aggregate): virtual=\(GainChannel.CA.nominalRate(dev)) Hz, real=\(GainChannel.CA.nominalRate(out)) Hz")
 
-        Log.shared.line("formats: virtual-in=\(GainChannel.CA.formatLine(dev, scope: CA.inputScope)), real-out=\(GainChannel.CA.formatLine(out, scope: CA.outputScope))")
+        Log.shared.line("formats: virtual-in=\(GainChannel.CA.formatLine(dev, scope: GainChannel.CA.inputScope)), real-out=\(GainChannel.CA.formatLine(out, scope: GainChannel.CA.outputScope))")
         Log.shared.line("io quanta: virtual=\(GainChannel.CA.bufferFrameSize(dev)) frames, real=\(GainChannel.CA.bufferFrameSize(out)) frames")
 
         guard configureAggregate() else { return false }
@@ -210,7 +210,7 @@ final class Engine: ObservableObject {
     // volume. macOS writes OUR volume element; we log and let it stand.)
 
     private func logVirtualControls() {
-        for scope in [CA.inputScope, CA.outputScope] {
+        for scope in [GainChannel.CA.inputScope, GainChannel.CA.outputScope] {
             let vol = GainChannel.CA.volumeScalar(virtualDevice, scope: scope).map { "\($0)" } ?? "?"
             let db = GainChannel.CA.volumeDecibels(virtualDevice, scope: scope).map { "\($0)" } ?? "?"
             let mute = GainChannel.CA.isMuted(virtualDevice, scope: scope).map { "\($0)" } ?? "?"
@@ -219,7 +219,7 @@ final class Engine: ObservableObject {
     }
 
     private func scopeName(_ scope: AudioObjectPropertyScope) -> String {
-        scope == CA.inputScope ? "input-master" : "output-master"
+        scope == GainChannel.CA.inputScope ? "input-master" : "output-master"
     }
 
     // MARK: Observation listeners (record whether keys/slider/HUD act
@@ -229,7 +229,7 @@ final class Engine: ObservableObject {
         let eventQueue = eventQueue
 
         for selector in [kAudioDevicePropertyVolumeScalar, kAudioDevicePropertyMute] {
-            for scope in [CA.inputScope, CA.outputScope] {
+            for scope in [GainChannel.CA.inputScope, GainChannel.CA.outputScope] {
                 let block: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
                     eventQueue.async { self?.virtualControlObserved() }
                 }
@@ -281,9 +281,9 @@ final class Engine: ObservableObject {
     /// External writes land here: log the observation and let it stand.
     /// Scalar AND dB are logged so near-unity step sizes can be inspected.
     private func virtualControlObserved() {
-        guard let vol = GainChannel.CA.volumeScalar(virtualDevice, scope: CA.outputScope),
-              let mute = GainChannel.CA.isMuted(virtualDevice, scope: CA.outputScope) else { return }
-        let db = GainChannel.CA.volumeDecibels(virtualDevice, scope: CA.outputScope).map { "\($0)" } ?? "?"
+        guard let vol = GainChannel.CA.volumeScalar(virtualDevice, scope: GainChannel.CA.outputScope),
+              let mute = GainChannel.CA.isMuted(virtualDevice, scope: GainChannel.CA.outputScope) else { return }
+        let db = GainChannel.CA.volumeDecibels(virtualDevice, scope: GainChannel.CA.outputScope).map { "\($0)" } ?? "?"
 
         Log.shared.line("OBSERVED external Passthru change: scalar=\(vol) dB=\(db) muted=\(mute) - native system volume moved; letting it stand")
     }
@@ -479,8 +479,8 @@ final class Engine: ObservableObject {
         guard let src = inBuffers.first?.mData?.assumingMemoryBound(to: Float.self),
               let dst = outBuffers.first?.mData?.assumingMemoryBound(to: Float.self) else { return }
 
-        let inChannels = max(Int(inBuffers[0].mNumberChannels), 1)
-        let outChannels = max(Int(outBuffers[0].mNumberChannels), 1)
+        let inChannels = GainChannel.CA.channelCount(buffer: inBuffers[0])
+        let outChannels = GainChannel.CA.channelCount(buffer: outBuffers[0])
         let inFrames = Int(inBuffers[0].mDataByteSize) / (MemoryLayout<Float>.size * inChannels)
         let outFrames = Int(outBuffers[0].mDataByteSize) / (MemoryLayout<Float>.size * outChannels)
         let inSamples = inFrames * inChannels
@@ -688,7 +688,7 @@ final class Engine: ObservableObject {
 
     private func refreshStatusLine() {
         formatSummary = outputDevice != 0
-            ? GainChannel.CA.shortFormatLine(virtualDevice, scope: CA.inputScope)
+            ? GainChannel.CA.shortFormatLine(virtualDevice, scope: GainChannel.CA.inputScope)
             : ""
         outputName = outputDevice != 0 ? GainChannel.CA.deviceName(outputDevice) : ""
     }

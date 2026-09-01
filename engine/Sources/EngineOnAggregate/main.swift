@@ -64,8 +64,8 @@ let ioProc: AudioDeviceIOProc = { _, _, inputData, inTime, outputData, outTime, 
     if let src = inBuffers.first?.mData?.assumingMemoryBound(to: Float.self),
        let dst = outBuffers.first?.mData?.assumingMemoryBound(to: Float.self),
        inFrames > 0, outFrames > 0 {
-let inChannels = GainChannel.CA.channelCount(buffer: inBuffers[0])
-                let outChannels = GainChannel.CA.channelCount(buffer: outBuffers[0])
+        let inChannels = GainChannel.CA.channelCount(buffer: inBuffers[0])
+        let outChannels = GainChannel.CA.channelCount(buffer: outBuffers[0])
         let wantCount = outFrames * outChannels
         let takeFrames = min(inFrames, outFrames)
         let takeCount = takeFrames * inChannels
@@ -129,15 +129,23 @@ guard let dacUID = GainChannel.CA.deviceUID(dac), let virtualUID = GainChannel.C
     exit(2)
 }
 
-let quantum = UInt32(GainChannel.CA.bufferFrameSize(dac))
+let quantum = GainChannel.CA.bufferFrameSize(dac)
+guard quantum > 0 else {
+    print("SPIKE RESULT: SETUP-FAILED - cannot read buffer frame size of DAC")
+    exit(2)
+}
 let rate = GainChannel.CA.nominalRate(dac)
+guard rate > 0 else {
+    print("SPIKE RESULT: SETUP-FAILED - cannot read nominal sample rate of DAC")
+    exit(2)
+}
 let channels = 2
-let target = 3 * Int(quantum) * channels / 2
-let band = max(Int(quantum) * channels / 8, 1)
+let target = 3 * quantum * channels / 2
+let band = max(quantum * channels / 8, 1)
 let capacity = 1 << 13
 
 print("engine-on-aggregate: master='\(GainChannel.CA.deviceName(dac))' (#\(dac)) member='\(GainChannel.CA.deviceName(virtual))' (#\(virtual))")
-print(String(format: "engine-on-aggregate: rate=%.0f Hz quantum=%u frames channels=%d", rate, quantum, channels))
+print(String(format: "engine-on-aggregate: rate=%.0f Hz quantum=%d frames channels=%d", rate, quantum, channels))
 print("engine-on-aggregate: ring cap=\(capacity) smp, target=\(target) smp, band=\(band) smp")
 print("engine-on-aggregate: soak \(Int(seconds))s")
 
@@ -151,7 +159,7 @@ do {
     print("SPIKE RESULT: SETUP-FAILED - cannot build ring: \(error)")
     exit(2)
 }
-state.quantumFrames = quantum
+state.quantumFrames = UInt32(quantum)
 state.sampleRate = rate
 state.channels = channels
 
