@@ -15,6 +15,7 @@ import AppKit
 import CoreAudio
 import Foundation
 import GainChannel
+import PassthruPersistence
 
 struct PlayingApp: Identifiable, Equatable {
     let pid: Int32

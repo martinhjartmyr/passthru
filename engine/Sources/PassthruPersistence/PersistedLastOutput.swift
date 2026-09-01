@@ -1,9 +1,8 @@
 // Single-UID last-output store.
 //
-// Truth owner: app side, same rationale as PersistedGains: the menu app
-// already owns UserDefaults, outlives coreaudiod reloads, and re-asserts
-// the remembered device at launch. No driver change required. Single
-// UID - no growth problem, no expiry needed.
+// Truth owner: app side. The menu app already owns UserDefaults, outlives
+// coreaudiod reloads, and re-asserts the remembered device at launch. No
+// driver change required. Single UID - no growth problem, no expiry needed.
 
 import Foundation
 
