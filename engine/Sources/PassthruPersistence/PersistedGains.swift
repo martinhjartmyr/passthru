@@ -15,37 +15,42 @@
 
 import Foundation
 
-struct PersistedGain: Codable, Equatable {
-    var gain: Double
-    var lastSeen: Date
+public struct PersistedGain: Codable, Equatable {
+    public var gain: Double
+    public var lastSeen: Date
+
+    public init(gain: Double, lastSeen: Date) {
+        self.gain = gain
+        self.lastSeen = lastSeen
+    }
 }
 
-final class PersistedGains {
+public final class PersistedGains {
     private static let key = "persisted-app-gains.v1"
     private static let expiryDays = 30
     private static let capacity = 200
 
     private let defaults: UserDefaults
-    private(set) var entries: [String: PersistedGain] = [:]
+    public private(set) var entries: [String: PersistedGain] = [:]
 
-    init(defaults: UserDefaults = .standard) {
+    public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         load()
     }
 
-    func gain(forBundleID bundleID: String) -> Float? {
+    public func gain(forBundleID bundleID: String) -> Float? {
         guard !bundleID.isEmpty, let entry = entries[bundleID] else { return nil }
         return Float(entry.gain)
     }
 
     /// Store/refresh a gain; also stamps lastSeen.
-    func set(gain: Float, forBundleID bundleID: String) {
+    public func set(gain: Float, forBundleID bundleID: String) {
         guard !bundleID.isEmpty else { return }
         entries[bundleID] = PersistedGain(gain: Double(gain), lastSeen: Date())
         save()
     }
 
-    func touch(bundleIDs: Set<String>) {
+    public func touch(bundleIDs: Set<String>) {
         guard !bundleIDs.isEmpty else { return }
         var dirty = false
         for id in bundleIDs where entries[id] != nil {
@@ -55,7 +60,7 @@ final class PersistedGains {
         if dirty { save() }
     }
 
-    func remove(bundleID: String) {
+    public func remove(bundleID: String) {
         guard entries.removeValue(forKey: bundleID) != nil else { return }
         save()
     }

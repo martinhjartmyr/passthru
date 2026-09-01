@@ -42,10 +42,11 @@ let package = Package(
             dependencies: ["GainChannel", "LatencyCore"],
             path: "Sources/EngineOnAggregate"
         ),
-        // Single-UID last-output store. App-side truth, same pattern as
-        // PersistedGains - UserDefaults-backed, host-testable. Lifted into
-        // its own target so the test target can @testable import without
-        // dragging in the executable's SwiftUI surface.
+        // Owns all UserDefaults-backed persistence. Siblings:
+        // PersistedLastOutput (single-UID last-output store) and
+        // PersistedGains (per-app gain store, 30-day expiry, 200-entry cap).
+        // Shared `defaults: UserDefaults = .standard` injection. Host-
+        // testable without dragging in the executable's SwiftUI surface.
         .target(
             name: "PassthruPersistence",
             path: "Sources/PassthruPersistence"
