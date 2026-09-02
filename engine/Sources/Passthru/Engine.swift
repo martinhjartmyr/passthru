@@ -336,7 +336,7 @@ final class Engine: ObservableObject {
             currentSinkID: outputDevice == 0 ? nil : UInt32(outputDevice),
             currentSinkName: outputDevice == 0 ? nil : GainChannel.CA.deviceName(outputDevice),
             currentSinkUID: outputDevice == 0 ? nil : GainChannel.CA.deviceUID(outputDevice),
-            rememberedUID: persistedLastOutput.uid,
+            rememberedChain: persistedLastOutput.uid.map { [$0] } ?? [],
             isRouted: routedToVirtual)
         let decision = RoutingDecider.decide(inputs)
         guard decision != .noop else { return }

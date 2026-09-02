@@ -24,16 +24,17 @@ final class RoutingDeciderTests: XCTestCase {
         currentSinkID: UInt32? = nil,
         currentSinkName: String? = nil,
         currentSinkUID: String? = nil,
-        rememberedUID: String? = nil,
+        rememberedChainHead: String? = nil,
         isRouted: Bool = false
     ) -> RoutingInputs {
-        RoutingInputs(
+        let chain: [String] = rememberedChainHead.map { [$0] } ?? []
+        return RoutingInputs(
             diff: diff,
             uidByID: uidByID,
             currentSinkID: currentSinkID,
             currentSinkName: currentSinkName,
             currentSinkUID: currentSinkUID,
-            rememberedUID: rememberedUID,
+            rememberedChain: chain,
             isRouted: isRouted)
     }
 
@@ -51,7 +52,7 @@ final class RoutingDeciderTests: XCTestCase {
             diff: DeviceListDiff(added: [sennheiser], removed: []),
             uidByID: [builtIn: builtInUID, sennheiser: sennheiserUID],
             currentSinkID: builtIn,
-            rememberedUID: udacUID))
+            rememberedChainHead: udacUID))
         XCTAssertEqual(result, .noop)
     }
 
@@ -60,7 +61,7 @@ final class RoutingDeciderTests: XCTestCase {
             diff: DeviceListDiff(added: [], removed: [sennheiser]),
             uidByID: [builtIn: builtInUID],
             currentSinkID: builtIn,
-            rememberedUID: udacUID))
+            rememberedChainHead: udacUID))
         XCTAssertEqual(result, .noop)
     }
 
@@ -71,7 +72,7 @@ final class RoutingDeciderTests: XCTestCase {
             diff: DeviceListDiff(added: [udac], removed: []),
             uidByID: [builtIn: builtInUID, udac: udacUID],
             currentSinkID: builtIn,
-            rememberedUID: udacUID))
+            rememberedChainHead: udacUID))
         XCTAssertEqual(result, .switchTo(uid: udacUID))
     }
 
@@ -81,7 +82,7 @@ final class RoutingDeciderTests: XCTestCase {
             diff: DeviceListDiff(added: [udac], removed: []),
             uidByID: [udac: udacUID],
             currentSinkID: udac,
-            rememberedUID: udacUID))
+            rememberedChainHead: udacUID))
         XCTAssertEqual(result, .noop)
     }
 
@@ -92,7 +93,7 @@ final class RoutingDeciderTests: XCTestCase {
         let result = RoutingDecider.decide(makeInputs(
             uidByID: [builtIn: builtInUID, udac: udacUID],
             currentSinkID: builtIn,
-            rememberedUID: udacUID,
+            rememberedChainHead: udacUID,
             isRouted: true))
         XCTAssertEqual(result, .switchTo(uid: udacUID))
     }
@@ -102,7 +103,7 @@ final class RoutingDeciderTests: XCTestCase {
         let result = RoutingDecider.decide(makeInputs(
             uidByID: [builtIn: builtInUID, udac: udacUID],
             currentSinkID: builtIn,
-            rememberedUID: udacUID,
+            rememberedChainHead: udacUID,
             isRouted: false))
         XCTAssertEqual(result, .noop)
     }
@@ -112,7 +113,7 @@ final class RoutingDeciderTests: XCTestCase {
         let result = RoutingDecider.decide(makeInputs(
             uidByID: [udac: udacUID],
             currentSinkID: udac,
-            rememberedUID: udacUID,
+            rememberedChainHead: udacUID,
             isRouted: true))
         XCTAssertEqual(result, .noop)
     }
@@ -126,7 +127,7 @@ final class RoutingDeciderTests: XCTestCase {
             currentSinkID: builtIn,
             currentSinkName: "Built-in Speaker",
             currentSinkUID: builtInUID,
-            rememberedUID: udacUID))
+            rememberedChainHead: udacUID))
         XCTAssertEqual(result, .fallbackTo(uid: udacUID))
     }
 
@@ -137,7 +138,7 @@ final class RoutingDeciderTests: XCTestCase {
             currentSinkID: builtIn,
             currentSinkName: "Built-in Speaker",
             currentSinkUID: builtInUID,
-            rememberedUID: nil))
+            rememberedChainHead: nil))
         XCTAssertEqual(result, .stopAndError(name: "Built-in Speaker"))
     }
 
@@ -150,7 +151,7 @@ final class RoutingDeciderTests: XCTestCase {
             currentSinkID: udac,
             currentSinkName: "uDAC-3",
             currentSinkUID: udacUID,
-            rememberedUID: udacUID))
+            rememberedChainHead: udacUID))
         XCTAssertEqual(result, .noop)
     }
 
@@ -163,7 +164,7 @@ final class RoutingDeciderTests: XCTestCase {
             diff: DeviceListDiff(added: [udac], removed: []),
             uidByID: [builtIn: builtInUID, udac: udacUID],
             currentSinkID: builtIn,
-            rememberedUID: udacUID,
+            rememberedChainHead: udacUID,
             isRouted: true))
         XCTAssertEqual(result, .switchTo(uid: udacUID))
     }
@@ -177,7 +178,7 @@ final class RoutingDeciderTests: XCTestCase {
             currentSinkID: builtIn,
             currentSinkName: "Built-in Speaker",
             currentSinkUID: builtInUID,
-            rememberedUID: udacUID,
+            rememberedChainHead: udacUID,
             isRouted: true))
         XCTAssertEqual(result, .fallbackTo(uid: udacUID))
     }
