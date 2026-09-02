@@ -45,35 +45,28 @@ public struct RoutingInputs: Equatable {
 }
 
 public enum RoutingDecider {
-    /// The Passthru virtual device's UID. Same constant as
-    /// `PersistedOutputChain.passthruUID`; the decider filters it from
-    /// the chain before walking so the "Passthru is never the engine
-    /// sink" invariant holds at the routing seam itself.
-    public static let passthruUID: String = "dev.passthru.virtual"
-
     public static func decide(_ inputs: RoutingInputs) -> RoutingDecision {
         let idByUID = Dictionary(uniqueKeysWithValues:
             inputs.uidByID.map { ($1, $0) })
-        let chain = inputs.rememberedChain.filter { $0 != passthruUID }
+        let chain = inputs.rememberedChain.filter { $0 != PersistedOutputChain.passthruUID }
 
         // 1. Disconnect: current sink gone. Check first so a same-tick
         //    add+remove resolves as fallback, not switch.
         if let sinkID = inputs.currentSinkID,
            inputs.diff.removed.contains(sinkID) {
-            // Walk the chain past the head if the head IS the device that
-            // disappeared (deliberate unplug of the most-recent entry).
-            // Pick the first entry that maps to an online device.
+            // Walk the chain, picking the first entry that maps to an
+            // online device. The disappeared sink has no entry in
+            // idByUID (it was just removed), so the walk naturally
+            // skips it. If the chain was effectively a single-slot
+            // (one entry, and that entry is the disappeared device),
+            // the user deliberately unplugged the only-remembered
+            // output; noop rather than surprise them. Otherwise surface
+            // an error so they can pick a new one.
             for remembered in chain {
-                if remembered == inputs.currentSinkUID { continue }
                 if idByUID[remembered] != nil {
                     return .fallbackTo(uid: remembered)
                 }
             }
-            // Walk exhausted. If the chain was effectively a single-slot
-            // (one entry, and that entry is the disappeared device), the
-            // user deliberately unplugged the only-remembered output;
-            // noop rather than surprise them. Otherwise surface an error
-            // so they can pick a new one.
             if chain.count == 1, chain.first == inputs.currentSinkUID {
                 return .noop
             }
