@@ -43,7 +43,7 @@ let package = Package(
             path: "Sources/EngineOnAggregate"
         ),
         // Owns all UserDefaults-backed persistence. Siblings:
-        // PersistedLastOutput (single-UID last-output store) and
+        // PersistedOutputChain (ordered, capped output history) and
         // PersistedGains (per-app gain store, 30-day expiry, 200-entry cap).
         // Shared `defaults: UserDefaults = .standard` injection. Host-
         // testable without dragging in the executable's SwiftUI surface.

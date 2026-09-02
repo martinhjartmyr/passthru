@@ -93,4 +93,38 @@ final class PersistedOutputChainTests: XCTestCase {
         XCTAssertEqual(a.read(), [udacUID])
         XCTAssertEqual(b.read(), [boseUID])
     }
+
+    // MARK: legacy migration
+
+    private static let legacyUIDKey = "persisted-last-output.v1.uid"
+
+    func testMigratesLegacyUIDIntoChainOnFirstLaunch() {
+        let defaults = makeDefaults(name: "migrate")
+        defaults.set(udacUID, forKey: Self.legacyUIDKey)
+        let chain = PersistedOutputChain(defaults: defaults)
+        XCTAssertEqual(chain.read(), [udacUID])
+        XCTAssertNil(defaults.string(forKey: Self.legacyUIDKey))
+        XCTAssertNotNil(defaults.array(forKey: "persisted-output-chain.v1.uids"))
+    }
+
+    func testMigrationRejectsLegacyPassthruUID() {
+        let defaults = makeDefaults(name: "migrate-passthru")
+        defaults.set(PersistedOutputChain.passthruUID, forKey: Self.legacyUIDKey)
+        let chain = PersistedOutputChain(defaults: defaults)
+        XCTAssertEqual(chain.read(), [])
+        XCTAssertNil(defaults.string(forKey: Self.legacyUIDKey))
+    }
+
+    func testMigrationLeavesFreshStoreEmpty() {
+        let chain = PersistedOutputChain(defaults: makeDefaults(name: "no-legacy"))
+        XCTAssertEqual(chain.read(), [])
+    }
+
+    func testMigrationLeavesExistingChainUnchanged() {
+        let defaults = makeDefaults(name: "existing")
+        defaults.set([sennheiserUID, udacUID], forKey: "persisted-output-chain.v1.uids")
+        defaults.set(boseUID, forKey: Self.legacyUIDKey)
+        let chain = PersistedOutputChain(defaults: defaults)
+        XCTAssertEqual(chain.read(), [sennheiserUID, udacUID])
+    }
 }
