@@ -24,17 +24,27 @@ final class RoutingDeciderTests: XCTestCase {
         currentSinkID: UInt32? = nil,
         currentSinkName: String? = nil,
         currentSinkUID: String? = nil,
+        rememberedChain: [String] = [],
         rememberedChainHead: String? = nil,
         isRouted: Bool = false
     ) -> RoutingInputs {
-        let chain: [String] = rememberedChainHead.map { [$0] } ?? []
+        if let head = rememberedChainHead {
+            return makeInputs(
+                diff: diff,
+                uidByID: uidByID,
+                currentSinkID: currentSinkID,
+                currentSinkName: currentSinkName,
+                currentSinkUID: currentSinkUID,
+                rememberedChain: [head],
+                isRouted: isRouted)
+        }
         return RoutingInputs(
             diff: diff,
             uidByID: uidByID,
             currentSinkID: currentSinkID,
             currentSinkName: currentSinkName,
             currentSinkUID: currentSinkUID,
-            rememberedChain: chain,
+            rememberedChain: rememberedChain,
             isRouted: isRouted)
     }
 
@@ -181,5 +191,109 @@ final class RoutingDeciderTests: XCTestCase {
             rememberedChainHead: udacUID,
             isRouted: true))
         XCTAssertEqual(result, .fallbackTo(uid: udacUID))
+    }
+
+    // MARK: chain walk on disconnect
+
+    func testChainPicksFirstOnlineEntryWhenHeadOffline() {
+        // uDAC (head) is offline; Sennheiser (next) is online. uDAC
+        // disappears. Fall back to Sennheiser.
+        let result = RoutingDecider.decide(makeInputs(
+            diff: DeviceListDiff(added: [], removed: [udac]),
+            uidByID: [sennheiser: sennheiserUID],
+            currentSinkID: udac,
+            currentSinkName: "uDAC-3",
+            currentSinkUID: udacUID,
+            rememberedChain: [udacUID, sennheiserUID]))
+        XCTAssertEqual(result, .fallbackTo(uid: sennheiserUID))
+    }
+
+    func testChainWalksToFirstOnlineWhenHeadAlsoOffline() {
+        // uDAC head and Sennheiser second are both offline; Bose is online.
+        // Fall back to Bose, skipping both offline entries.
+        let result = RoutingDecider.decide(makeInputs(
+            diff: DeviceListDiff(added: [], removed: [udac]),
+            uidByID: [bose: boseUID],
+            currentSinkID: udac,
+            currentSinkName: "uDAC-3",
+            currentSinkUID: udacUID,
+            rememberedChain: [udacUID, sennheiserUID, boseUID]))
+        XCTAssertEqual(result, .fallbackTo(uid: boseUID))
+    }
+
+    func testChainAllOfflineFallsThroughToStopAndError() {
+        let result = RoutingDecider.decide(makeInputs(
+            diff: DeviceListDiff(added: [], removed: [udac]),
+            uidByID: [:],
+            currentSinkID: udac,
+            currentSinkName: "uDAC-3",
+            currentSinkUID: udacUID,
+            rememberedChain: [udacUID, sennheiserUID, boseUID]))
+        XCTAssertEqual(result, .stopAndError(name: "uDAC-3"))
+    }
+
+    func testChainEmptyFallsThroughToStopAndError() {
+        // Belt-and-braces: a chain of [] (not just chain-of-nothing-online)
+        // still falls through. Mirrors the no-remembered behaviour.
+        let result = RoutingDecider.decide(makeInputs(
+            diff: DeviceListDiff(added: [], removed: [udac]),
+            uidByID: [sennheiser: sennheiserUID],
+            currentSinkID: udac,
+            currentSinkName: "uDAC-3",
+            currentSinkUID: udacUID,
+            rememberedChain: []))
+        XCTAssertEqual(result, .stopAndError(name: "uDAC-3"))
+    }
+
+    func testChainSkipsPassthruUIDAndPicksNextEntry() {
+        // Chain has Passthru UID as head (shouldn't be, but defensively).
+        // Decider filters it and picks the next online entry.
+        let result = RoutingDecider.decide(makeInputs(
+            diff: DeviceListDiff(added: [], removed: [udac]),
+            uidByID: [sennheiser: sennheiserUID],
+            currentSinkID: udac,
+            currentSinkName: "uDAC-3",
+            currentSinkUID: udacUID,
+            rememberedChain: ["dev.passthru.virtual", sennheiserUID]))
+        XCTAssertEqual(result, .fallbackTo(uid: sennheiserUID))
+    }
+
+    func testChainOnlyPassthruFallsThroughToStopAndError() {
+        // Chain of [Passthru] filters down to []. Stop and error.
+        let result = RoutingDecider.decide(makeInputs(
+            diff: DeviceListDiff(added: [], removed: [udac]),
+            uidByID: [sennheiser: sennheiserUID],
+            currentSinkID: udac,
+            currentSinkName: "uDAC-3",
+            currentSinkUID: udacUID,
+            rememberedChain: ["dev.passthru.virtual"]))
+        XCTAssertEqual(result, .stopAndError(name: "uDAC-3"))
+    }
+
+    func testChainOfflineAndPassthruSkippedPicksOnlineEntry() {
+        // uDAC (head) offline; Passthru (next, defensive) filtered; Bose
+        // (third) online. Fall back to Bose.
+        let result = RoutingDecider.decide(makeInputs(
+            diff: DeviceListDiff(added: [], removed: [udac]),
+            uidByID: [bose: boseUID],
+            currentSinkID: udac,
+            currentSinkName: "uDAC-3",
+            currentSinkUID: udacUID,
+            rememberedChain: [udacUID, "dev.passthru.virtual", boseUID]))
+        XCTAssertEqual(result, .fallbackTo(uid: boseUID))
+    }
+
+    func testChainWalksPastHeadWhenHeadIsDisappearedDevice() {
+        // uDAC (current sink and head) disappears. With a second chain
+        // entry behind it that IS online, walk past the disappeared head
+        // and fall back to Sennheiser.
+        let result = RoutingDecider.decide(makeInputs(
+            diff: DeviceListDiff(added: [], removed: [udac]),
+            uidByID: [sennheiser: sennheiserUID],
+            currentSinkID: udac,
+            currentSinkName: "uDAC-3",
+            currentSinkUID: udacUID,
+            rememberedChain: [udacUID, sennheiserUID]))
+        XCTAssertEqual(result, .fallbackTo(uid: sennheiserUID))
     }
 }

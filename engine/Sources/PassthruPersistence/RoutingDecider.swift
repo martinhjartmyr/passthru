@@ -45,30 +45,43 @@ public struct RoutingInputs: Equatable {
 }
 
 public enum RoutingDecider {
+    /// The Passthru virtual device's UID. Same constant as
+    /// `PersistedOutputChain.passthruUID`; the decider filters it from
+    /// the chain before walking so the "Passthru is never the engine
+    /// sink" invariant holds at the routing seam itself.
+    public static let passthruUID: String = "dev.passthru.virtual"
+
     public static func decide(_ inputs: RoutingInputs) -> RoutingDecision {
         let idByUID = Dictionary(uniqueKeysWithValues:
             inputs.uidByID.map { ($1, $0) })
-        let head = inputs.rememberedChain.first
+        let chain = inputs.rememberedChain.filter { $0 != passthruUID }
 
         // 1. Disconnect: current sink gone. Check first so a same-tick
         //    add+remove resolves as fallback, not switch.
         if let sinkID = inputs.currentSinkID,
            inputs.diff.removed.contains(sinkID) {
-            // If the device that disappeared IS the remembered head,
-            // don't fall back to itself; also don't surface an error
-            // for a deliberate unplug.
-            if let remembered = head,
-               remembered == inputs.currentSinkUID {
-                return .noop
+            // Walk the chain past the head if the head IS the device that
+            // disappeared (deliberate unplug of the most-recent entry).
+            // Pick the first entry that maps to an online device.
+            for remembered in chain {
+                if remembered == inputs.currentSinkUID { continue }
+                if idByUID[remembered] != nil {
+                    return .fallbackTo(uid: remembered)
+                }
             }
-            if let remembered = head,
-               idByUID[remembered] != nil {
-                return .fallbackTo(uid: remembered)
+            // Walk exhausted. If the chain was effectively a single-slot
+            // (one entry, and that entry is the disappeared device), the
+            // user deliberately unplugged the only-remembered output;
+            // noop rather than surprise them. Otherwise surface an error
+            // so they can pick a new one.
+            if chain.count == 1, chain.first == inputs.currentSinkUID {
+                return .noop
             }
             return .stopAndError(name: inputs.currentSinkName ?? "previous output")
         }
 
         // 2. Hot-plug: remembered head just appeared.
+        let head = chain.first
         if let remembered = head,
            let rememberedID = idByUID[remembered],
            inputs.diff.added.contains(rememberedID),
