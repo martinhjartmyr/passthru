@@ -74,10 +74,14 @@ final class Engine: ObservableObject {
     private var defaultOutputListenerBlock: AudioObjectPropertyListenerBlock?
     private var signalSources: [DispatchSourceSignal] = []
 
-    // Auto-switch engine sink to the last-used output. Persisted UID,
-    // system-object listener on the device list, decision via the pure
-    // RoutingDecider. Stamps only on a successful selectOutput.
-    private let persistedLastOutput = PersistedLastOutput()
+    // Auto-switch engine sink to the last-used output. Ordered, capped
+    // output chain (most-recent first); system-object listener on the
+    // device list; decision via the pure RoutingDecider. The chain is
+    // written on a successful selectOutput (user pick OR auto-fallback)
+    // and read on every routing decision. The Passthru UID is rejected
+    // at the persistence seam itself; the engine's own Passthru refusal
+    // in selectOutput is in addition to that, not a replacement.
+    private let persistedOutputChain: PersistedOutputChain
     private var knownDevices: Set<UInt32> = []
     private var devicesBlock: AudioObjectPropertyListenerBlock?
     private var routingReady = false
@@ -85,6 +89,10 @@ final class Engine: ObservableObject {
 
     // Who is playing and per-app gains (inactive until start()).
     private var perAppMixer: PerAppMixer?
+
+    init(persistedOutputChain: PersistedOutputChain = PersistedOutputChain()) {
+        self.persistedOutputChain = persistedOutputChain
+    }
 
     // MARK: Lifecycle
 
@@ -336,7 +344,7 @@ final class Engine: ObservableObject {
             currentSinkID: outputDevice == 0 ? nil : UInt32(outputDevice),
             currentSinkName: outputDevice == 0 ? nil : GainChannel.CA.deviceName(outputDevice),
             currentSinkUID: outputDevice == 0 ? nil : GainChannel.CA.deviceUID(outputDevice),
-            rememberedChain: persistedLastOutput.uid.map { [$0] } ?? [],
+            rememberedChain: persistedOutputChain.read(),
             isRouted: routedToVirtual)
         let decision = RoutingDecider.decide(inputs)
         guard decision != .noop else { return }
@@ -614,7 +622,12 @@ final class Engine: ObservableObject {
         if rebuildAggregate(on: id) {
             selectedOutputID = id
             if let uid = GainChannel.CA.deviceUID(id) {
-                persistedLastOutput.uid = uid
+                // Belt-and-braces: the chain also rejects the Passthru UID,
+                // so even if the engine's own refusal above were ever bypassed
+                // the chain stays clean. Record AFTER the successful
+                // rebuild - a failed switch (revert path below) does not
+                // write the chain.
+                persistedOutputChain.record(uid: uid)
             }
             Log.shared.line("output switched '\(oldName)' -> '\(GainChannel.CA.deviceName(id))' @\(Int(GainChannel.CA.nominalRate(id))) Hz")
         } else {
